@@ -1,5 +1,5 @@
 /*************************************************************************
-  Código IMS BLE gauge board
+  Demo Servicio BLE y ADS1232
 
   Tarjeta:
   Arduino Nano 33 BLE
@@ -14,13 +14,13 @@
 #include <ADS123X.h>
 
 
-#define LED_PCB_IMS_STAT    D11
-#define BTN_PCB_IMS_START   D10
+#define LED_PCB_IMS_STAT D11
+#define BTN_PCB_IMS_START D10
 
-#define BTN_PRESSED         0
-#define BTN_NOT_PRESSED     1
+#define BTN_PRESSED 0
+#define BTN_NOT_PRESSED 1
 
-#define BLE_DEVICE_NAME "BLE IMS gauge board"
+#define BLE_DEVICE_NAME "Arduino Nano 33 BLE"
 #define BLE_SERVICE_UUID "68D2E014-B38D-11EC-B909-0242AC120002"
 #define BLE_CHARACTERISTIC_UUID "68D2E015-B38D-11EC-B909-0242AC120002"
 
@@ -38,8 +38,8 @@
 
 
 enum States {
-  BLE_WAIT,
-  BLE_START_ADVERTISING_ADS_READING
+  BLE_IDLE_ADVERTISING,
+  BLE_START_ADVERTISING
 };
 
 States state;
@@ -74,63 +74,68 @@ void setup() {
 }
 
 void loop() {
-  // wait for a BLE central
-  BLEDevice central = BLE.central();
+  static unsigned long previousMillis = 0;
+  unsigned long currentMillis = millis();
 
-  // if a central is connected to the peripheral
-  if (central) {
-    Serial.println("* Connected to central device!");
-    Serial.print("* Device MAC address: ");
+  static uint8_t state = BLE_IDLE_ADVERTISING;
 
-    Serial.println(central.address());
-    Serial.println(" ");
+  switch (state) {
+    case BLE_START_ADVERTISING:
+      digitalWrite(LED_PCB_IMS_STAT, HIGH);
 
-    digitalWrite(LED_BUILTIN, HIGH);
+      // wait for a BLE central
+      BLEDevice central = BLE.central();
 
-    uint8_t state = BLE_WAIT;
+      // if a central is connected to the peripheral
+      if (central) {
+        Serial.println("* Connected to central device!");
+        Serial.print("* Device MAC address: ");
 
-    while (central.connected()) {
-      static unsigned long previousMillis = 0;
-      static unsigned long adcReadingMillis = 0;
+        Serial.println(central.address());
+        Serial.println(" ");
 
-      unsigned long currentMillis = millis();
+        digitalWrite(LED_BUILTIN, HIGH);
 
-      switch (state) {
-        case BLE_START_ADVERTISING_ADS_READING:
-          digitalWrite(LED_PCB_IMS_STAT, HIGH);
+        while (central.connected()) {
+          static unsigned long adcReadingMillis = 0;
 
-          if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
-            previousMillis = currentMillis;
-            state = BLE_WAIT;
-          }
+          unsigned long currentMillis = millis();
 
           if (currentMillis - adcReadingMillis >= ADC_READ_INTERVAL_MS) {
             adcReadingMillis = currentMillis;
             updateADS1232Reading();
           }
-          break;
-        case BLE_WAIT:
-          digitalWrite(LED_PCB_IMS_STAT, LOW);
-        
+
           if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
             previousMillis = currentMillis;
-            state = BLE_START_ADVERTISING_ADS_READING;
+            state = BLE_IDLE_ADVERTISING;
+            break;
           }
-          break;
+        }
+
+        // when the central disconnects, turn off the LED:
+        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_PCB_IMS_STAT, LOW);
+
+        Serial.println("* Disconnected to central device!");
+        Serial.print("* Device MAC address: ");
+
+        Serial.println(central.address());
+        Serial.println(" ");
+
+        Serial.println("Bluetooth device active, waiting for connections...");
+        state = BLE_IDLE_ADVERTISING;
       }
-    }
+      break;
+    
+    case BLE_IDLE_ADVERTISING:
+      digitalWrite(LED_PCB_IMS_STAT, LOW);
 
-    // when the central disconnects, turn off the LED:
-    digitalWrite(LED_BUILTIN, LOW);
-    digitalWrite(LED_PCB_IMS_STAT, LOW);
-
-    Serial.println("* Disconnected to central device!");
-    Serial.print("* Device MAC address: ");
-
-    Serial.println(central.address());
-    Serial.println(" ");
-
-    Serial.println("Bluetooth device active, waiting for connections...");
+      if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
+        previousMillis = currentMillis;
+        state = BLE_START_ADVERTISING;
+      }
+      break;
   }
 }
 
