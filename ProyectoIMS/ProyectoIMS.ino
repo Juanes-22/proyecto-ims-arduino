@@ -1,9 +1,7 @@
 /*************************************************************************
-  Demo Servicio BLE y ADS1232
-
+  Código IMS BLE gauge board
   Tarjeta:
   Arduino Nano 33 BLE
-
   Crea un periférico BLE con un servicio personalizado que comprende una 
   característica para la lectura del ADS1232 en modo Notify. Se utiliza 
   la librería ADS123x de https://github.com/HamidSaffari/ADS123X.
@@ -14,11 +12,11 @@
 #include <ADS123X.h>
 
 
-#define LED_PCB_IMS_STAT D11
-#define BTN_PCB_IMS_START D10
+#define LED_PCB_IMS_STAT    D11
+#define BTN_PCB_IMS_START   D10
 
-#define BTN_PRESSED 0
-#define BTN_NOT_PRESSED 1
+#define BTN_PRESSED         0
+#define BTN_NOT_PRESSED     1
 
 #define BLE_DEVICE_NAME "BLE IMS gauge board"
 #define BLE_SERVICE_UUID "68D2E014-B38D-11EC-B909-0242AC120002"
@@ -38,8 +36,8 @@
 
 
 enum States {
-  BLE_IDLE_ADVERTISING,
-  BLE_START_ADVERTISING
+  BLE_START_ADVERTISING_ADS_READING,
+  BLE_IDLE_ADVERTISING
 };
 
 States state;
@@ -74,68 +72,63 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long previousMillis = 0;
-  unsigned long currentMillis = millis();
+  // wait for a BLE central
+  BLEDevice central = BLE.central();
 
-  static uint8_t state = BLE_IDLE_ADVERTISING;
+  // if a central is connected to the peripheral
+  if (central) {
+    Serial.println("* Connected to central device!");
+    Serial.print("* Device MAC address: ");
 
-  switch (state) {
-    case BLE_START_ADVERTISING:
-      digitalWrite(LED_PCB_IMS_STAT, HIGH);
+    Serial.println(central.address());
+    Serial.println(" ");
 
-      // wait for a BLE central
-      BLEDevice central = BLE.central();
+    digitalWrite(LED_BUILTIN, HIGH);
 
-      // if a central is connected to the peripheral
-      if (central) {
-        Serial.println("* Connected to central device!");
-        Serial.print("* Device MAC address: ");
+    uint8_t state = BLE_IDLE_ADVERTISING;
 
-        Serial.println(central.address());
-        Serial.println(" ");
+    while (central.connected()) {
+      static unsigned long previousMillis = 0;
+      static unsigned long adcReadingMillis = 0;
 
-        digitalWrite(LED_BUILTIN, HIGH);
+      unsigned long currentMillis = millis();
 
-        while (central.connected()) {
-          static unsigned long adcReadingMillis = 0;
-
-          unsigned long currentMillis = millis();
-
-          if (currentMillis - adcReadingMillis >= ADC_READ_INTERVAL_MS) {
-            adcReadingMillis = currentMillis;
-            updateADS1232Reading();
-          }
+      switch (state) {
+        case BLE_START_ADVERTISING_ADS_READING:
+          digitalWrite(LED_PCB_IMS_STAT, HIGH);
 
           if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
             previousMillis = currentMillis;
             state = BLE_IDLE_ADVERTISING;
-            break;
           }
-        }
 
-        // when the central disconnects, turn off the LED:
-        digitalWrite(LED_BUILTIN, LOW);
-        digitalWrite(LED_PCB_IMS_STAT, LOW);
+          if (currentMillis - adcReadingMillis >= ADC_READ_INTERVAL_MS) {
+            adcReadingMillis = currentMillis;
+            //updateADS1232Reading();
+          }
+          break;
+        case BLE_IDLE_ADVERTISING:
+          digitalWrite(LED_PCB_IMS_STAT, LOW);
 
-        Serial.println("* Disconnected to central device!");
-        Serial.print("* Device MAC address: ");
-
-        Serial.println(central.address());
-        Serial.println(" ");
-
-        Serial.println("Bluetooth device active, waiting for connections...");
-        state = BLE_IDLE_ADVERTISING;
+          if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
+            previousMillis = currentMillis;
+            state = BLE_START_ADVERTISING_ADS_READING;
+          }
+          break;
       }
-      break;
-    
-    case BLE_IDLE_ADVERTISING:
-      digitalWrite(LED_PCB_IMS_STAT, LOW);
+    }
 
-      if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
-        previousMillis = currentMillis;
-        state = BLE_START_ADVERTISING;
-      }
-      break;
+    // when the central disconnects, turn off the LED:
+    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(LED_PCB_IMS_STAT, LOW);
+
+    Serial.println("* Disconnected to central device!");
+    Serial.print("* Device MAC address: ");
+
+    Serial.println(central.address());
+    Serial.println(" ");
+
+    Serial.println("Bluetooth device active, waiting for connections...");
   }
 }
 
@@ -150,7 +143,7 @@ void setupBLEPeripheral() {
     delay(1000);
   }
 
-  Serial.println("Arduino Nano 33 BLE (Peripheral Device)");
+  Serial.println("IMS BLE gauge board (Peripheral Device)");
   Serial.println(" ");
 
   Serial.print("My BLE MAC:\t\t ");
