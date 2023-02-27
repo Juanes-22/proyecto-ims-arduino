@@ -1,4 +1,4 @@
-# Repositorio Proyecto IMS Arduino
+# Repositorio proyecto IMS - Arduino
 
 Código en Arduino para la IMS BLE gauge board. Con este código es posible transmitir lecturas de un conversor analógico ADS1232 mediante notificaciones de un servicio BLE personalizado. 
 
