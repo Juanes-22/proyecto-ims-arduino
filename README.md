@@ -4,7 +4,7 @@ Código en Arduino para la IMS BLE gauge board. Con este código es posible tran
 
 ## Definiciones BLE
 ```c++
-#define BLE_DEVICE_NAME           "Arduino Nano 33 BLE"
+#define BLE_DEVICE_NAME           "BLE IMS gauge board"
 #define BLE_SERVICE_UUID          "68D2E014-B38D-11EC-B909-0242AC120002"
 #define BLE_CHARACTERISTIC_UUID   "68D2E015-B38D-11EC-B909-0242AC120002"
 ```
