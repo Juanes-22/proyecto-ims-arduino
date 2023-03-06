@@ -12,11 +12,11 @@
 #include <ADS123X.h>
 
 
-#define LED_PCB_IMS_STAT    D11
-#define BTN_PCB_IMS_START   D10
+#define LED_PCB_IMS_STAT D11
+#define BTN_PCB_IMS_START D10
 
-#define BTN_PRESSED         0
-#define BTN_NOT_PRESSED     1
+#define BTN_PRESSED 0
+#define BTN_NOT_PRESSED 1
 
 #define BLE_DEVICE_NAME "BLE IMS gauge board"
 #define BLE_SERVICE_UUID "68D2E014-B38D-11EC-B909-0242AC120002"
@@ -36,11 +36,13 @@
 
 
 enum States {
-  BLE_START_ADVERTISING_ADS_READING,
+  BLE_START_ADVERTISING,
+  BLE_STOP_ADVERTISING,
+  BLE_ADVERTISING,
   BLE_IDLE_ADVERTISING
 };
 
-States state;
+States state = BLE_IDLE_ADVERTISING;
 
 // BLE Custom Gauge Service
 BLEService strainGaugeService(BLE_SERVICE_UUID);
@@ -50,6 +52,9 @@ BLEFloatCharacteristic ads1232ReadingCharacteristic(BLE_CHARACTERISTIC_UUID, BLE
 
 // ADS123X instance
 ADS123X ads1232;
+
+BLEDevice central;
+
 
 /****************************************
    Main Functions
@@ -72,64 +77,88 @@ void setup() {
 }
 
 void loop() {
-  // wait for a BLE central
-  BLEDevice central = BLE.central();
+  static unsigned long previousMillis = 0;
+  unsigned long currentMillis = millis();
 
-  // if a central is connected to the peripheral
-  if (central) {
-    Serial.println("* Connected to central device!");
-    Serial.print("* Device MAC address: ");
+  switch (state) {
+    case BLE_START_ADVERTISING:
+      digitalWrite(LED_PCB_IMS_STAT, HIGH);
 
-    Serial.println(central.address());
-    Serial.println(" ");
+      // start advertising
+      BLE.advertise();
+      Serial.println("Bluetooth device active, waiting for connections...");
 
-    digitalWrite(LED_BUILTIN, HIGH);
+      state = BLE_ADVERTISING;
+      break;
 
-    uint8_t state = BLE_IDLE_ADVERTISING;
+    case BLE_ADVERTISING:
+      central = BLE.central();
 
-    while (central.connected()) {
-      static unsigned long previousMillis = 0;
-      static unsigned long adcReadingMillis = 0;
+      // if a central is connected to the peripheral
+      if (central) {
+        Serial.println("* Connected to central device!");
+        Serial.print("* Device MAC address: ");
+        Serial.println(central.address());
+        Serial.println(" ");
 
-      unsigned long currentMillis = millis();
+        digitalWrite(LED_BUILTIN, HIGH);
 
-      switch (state) {
-        case BLE_START_ADVERTISING_ADS_READING:
-          digitalWrite(LED_PCB_IMS_STAT, HIGH);
+        while (central.connected()) {
+          previousMillis = 0;
+          currentMillis = millis();
+          static unsigned long adcReadingMillis = 0;
 
-          if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
+          if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 2000) {
+            // stop advertising
+            BLE.stopAdvertise();
+            Serial.println("Bluetooth device stop advertising...");
+
+            // disconnect from central device
+            central.disconnect();
+
             previousMillis = currentMillis;
             state = BLE_IDLE_ADVERTISING;
           }
 
           if (currentMillis - adcReadingMillis >= ADC_READ_INTERVAL_MS) {
             adcReadingMillis = currentMillis;
+            Serial.println("ADS1232 gauge value notify");
             //updateADS1232Reading();
           }
-          break;
-        case BLE_IDLE_ADVERTISING:
-          digitalWrite(LED_PCB_IMS_STAT, LOW);
+        }
 
-          if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 500) {
-            previousMillis = currentMillis;
-            state = BLE_START_ADVERTISING_ADS_READING;
-          }
-          break;
+        // when the central disconnects, turn off the LED:
+        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_PCB_IMS_STAT, LOW);
+
+        Serial.println("* Disconnected to central device!");
+        Serial.print("* Device MAC address: ");
+        Serial.println(central.address());
+        Serial.println(" ");
+
+        Serial.println("Bluetooth device active, waiting for connections...");
       }
-    }
 
-    // when the central disconnects, turn off the LED:
-    digitalWrite(LED_BUILTIN, LOW);
-    digitalWrite(LED_PCB_IMS_STAT, LOW);
+      if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 2000) {
+        // stop advertising
+        BLE.stopAdvertise();
+        Serial.println("Bluetooth device stop advertising...");
 
-    Serial.println("* Disconnected to central device!");
-    Serial.print("* Device MAC address: ");
+        previousMillis = currentMillis;
+        state = BLE_IDLE_ADVERTISING;
+      }
+      break;
 
-    Serial.println(central.address());
-    Serial.println(" ");
+    case BLE_IDLE_ADVERTISING:
+      digitalWrite(LED_PCB_IMS_STAT, LOW);
 
-    Serial.println("Bluetooth device active, waiting for connections...");
+      if (digitalRead(BTN_PCB_IMS_START) == BTN_PRESSED && currentMillis - previousMillis >= 2000) {
+        previousMillis = currentMillis;
+        state = BLE_START_ADVERTISING;
+      }
+      break;
   }
+
 }
 
 /****************************************
@@ -170,11 +199,6 @@ void setupBLEPeripheral() {
 
   // set an initial value for this characteristic
   ads1232ReadingCharacteristic.setValue(0.f);
-
-  // start advertising
-  BLE.advertise();
-
-  Serial.println("Bluetooth device active, waiting for connections...");
 }
 
 void updateADS1232Reading() {
